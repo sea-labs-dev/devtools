@@ -12,93 +12,719 @@ export interface AutoFixResult {
   fixesApplied: string[];
 }
 
+interface Token {
+  type:
+    | 'LBRACE'
+    | 'RBRACE'
+    | 'LBRACKET'
+    | 'RBRACKET'
+    | 'COLON'
+    | 'COMMA'
+    | 'STRING'
+    | 'NUMBER'
+    | 'BOOLEAN'
+    | 'NULL'
+    | 'SINGLE_STRING'
+    | 'UNQUOTED_WORD'
+    | 'COMMENT'
+    | 'UNKNOWN';
+  value: string;
+  line: number;
+  col: number;
+  pos: number;
+  endLine: number;
+  endCol: number;
+  endPos: number;
+}
+
+function tokenize(text: string): { tokens: Token[]; error: JsonErrorInfo | null } {
+  const tokens: Token[] = [];
+  let i = 0;
+  let line = 1;
+  let col = 1;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (ch === '\n') {
+      line++;
+      col = 1;
+      i++;
+      continue;
+    }
+    if (ch === '\r') {
+      if (i + 1 < text.length && text[i + 1] === '\n') {
+        i += 2;
+        line++;
+        col = 1;
+        continue;
+      }
+      line++;
+      col = 1;
+      i++;
+      continue;
+    }
+
+    if (ch === ' ' || ch === '\t') {
+      col++;
+      i++;
+      continue;
+    }
+
+    // Skip Comments
+    if (ch === '/' && i + 1 < text.length) {
+      if (text[i + 1] === '/') {
+        const startLine = line;
+        const startCol = col;
+        const startPos = i;
+        while (i < text.length && text[i] !== '\n' && text[i] !== '\r') {
+          i++;
+          col++;
+        }
+        tokens.push({
+          type: 'COMMENT',
+          value: text.slice(startPos, i),
+          line: startLine,
+          col: startCol,
+          pos: startPos,
+          endLine: line,
+          endCol: col,
+          endPos: i,
+        });
+        continue;
+      } else if (text[i + 1] === '*') {
+        const startLine = line;
+        const startCol = col;
+        const startPos = i;
+        i += 2;
+        col += 2;
+        while (i < text.length && !(text[i] === '*' && i + 1 < text.length && text[i + 1] === '/')) {
+          if (text[i] === '\n') {
+            line++;
+            col = 1;
+          } else {
+            col++;
+          }
+          i++;
+        }
+        if (i < text.length) {
+          i += 2;
+          col += 2;
+        }
+        tokens.push({
+          type: 'COMMENT',
+          value: text.slice(startPos, i),
+          line: startLine,
+          col: startCol,
+          pos: startPos,
+          endLine: line,
+          endCol: col,
+          endPos: i,
+        });
+        continue;
+      }
+    }
+
+    const startLine = line;
+    const startCol = col;
+    const startPos = i;
+
+    if (ch === '{') {
+      tokens.push({ type: 'LBRACE', value: '{', line, col, pos: i, endLine: line, endCol: col + 1, endPos: i + 1 });
+      i++; col++; continue;
+    }
+    if (ch === '}') {
+      tokens.push({ type: 'RBRACE', value: '}', line, col, pos: i, endLine: line, endCol: col + 1, endPos: i + 1 });
+      i++; col++; continue;
+    }
+    if (ch === '[') {
+      tokens.push({ type: 'LBRACKET', value: '[', line, col, pos: i, endLine: line, endCol: col + 1, endPos: i + 1 });
+      i++; col++; continue;
+    }
+    if (ch === ']') {
+      tokens.push({ type: 'RBRACKET', value: ']', line, col, pos: i, endLine: line, endCol: col + 1, endPos: i + 1 });
+      i++; col++; continue;
+    }
+    if (ch === ':') {
+      tokens.push({ type: 'COLON', value: ':', line, col, pos: i, endLine: line, endCol: col + 1, endPos: i + 1 });
+      i++; col++; continue;
+    }
+    if (ch === ',') {
+      tokens.push({ type: 'COMMA', value: ',', line, col, pos: i, endLine: line, endCol: col + 1, endPos: i + 1 });
+      i++; col++; continue;
+    }
+
+    // Double-quoted string
+    if (ch === '"') {
+      i++; col++;
+      let strVal = '';
+      let isEscaped = false;
+      let closed = false;
+
+      while (i < text.length) {
+        const c = text[i];
+        if (c === '\n' || c === '\r') {
+          return {
+            tokens,
+            error: {
+              line: startLine,
+              column: startCol,
+              position: startPos,
+              message: 'Unterminated string constant',
+              thaiHint: `บรรทัดที่ ${startLine} คอลัมน์ ${startCol}: ลืมปิดเครื่องหมายคำพูด (")`,
+            },
+          };
+        }
+        if (isEscaped) {
+          strVal += c;
+          isEscaped = false;
+        } else if (c === '\\') {
+          isEscaped = true;
+          strVal += c;
+        } else if (c === '"') {
+          i++; col++;
+          closed = true;
+          break;
+        } else {
+          strVal += c;
+        }
+        i++; col++;
+      }
+
+      if (!closed) {
+        return {
+          tokens,
+          error: {
+            line: startLine,
+            column: startCol,
+            position: startPos,
+            message: 'Unterminated string constant at end of file',
+            thaiHint: `บรรทัดที่ ${startLine} คอลัมน์ ${startCol}: ลืมปิดเครื่องหมายคำพูด (") ที่ท้ายข้อความ`,
+          },
+        };
+      }
+
+      tokens.push({
+        type: 'STRING',
+        value: strVal,
+        line: startLine,
+        col: startCol,
+        pos: startPos,
+        endLine: line,
+        endCol: col,
+        endPos: i,
+      });
+      continue;
+    }
+
+    // Single-quoted string
+    if (ch === "'") {
+      i++; col++;
+      let strVal = '';
+      let isEscaped = false;
+
+      while (i < text.length) {
+        const c = text[i];
+        if (c === '\n' || c === '\r') {
+          break;
+        }
+        if (isEscaped) {
+          strVal += c;
+          isEscaped = false;
+        } else if (c === '\\') {
+          isEscaped = true;
+          strVal += c;
+        } else if (c === "'") {
+          i++; col++;
+          break;
+        } else {
+          strVal += c;
+        }
+        i++; col++;
+      }
+
+      tokens.push({
+        type: 'SINGLE_STRING',
+        value: strVal,
+        line: startLine,
+        col: startCol,
+        pos: startPos,
+        endLine: line,
+        endCol: col,
+        endPos: i,
+      });
+      continue;
+    }
+
+    // Numbers: e.g. -123.45e+10
+    if (ch === '-' || (ch >= '0' && ch <= '9')) {
+      const numStart = i;
+      while (i < text.length && /[-+0-9.eE]/.test(text[i])) {
+        i++; col++;
+      }
+      tokens.push({
+        type: 'NUMBER',
+        value: text.slice(numStart, i),
+        line: startLine,
+        col: startCol,
+        pos: startPos,
+        endLine: line,
+        endCol: col,
+        endPos: i,
+      });
+      continue;
+    }
+
+    // Identifiers or unquoted words (true, false, null, or word)
+    if (/[a-zA-Z_$]/.test(ch)) {
+      const idStart = i;
+      while (i < text.length && /[a-zA-Z0-9_$]/.test(text[i])) {
+        i++; col++;
+      }
+      const word = text.slice(idStart, i);
+      let type: Token['type'] = 'UNQUOTED_WORD';
+      if (word === 'true' || word === 'false') type = 'BOOLEAN';
+      else if (word === 'null') type = 'NULL';
+
+      tokens.push({
+        type,
+        value: word,
+        line: startLine,
+        col: startCol,
+        pos: startPos,
+        endLine: line,
+        endCol: col,
+        endPos: i,
+      });
+      continue;
+    }
+
+    // Unknown symbol
+    tokens.push({
+      type: 'UNKNOWN',
+      value: ch,
+      line: startLine,
+      col: startCol,
+      pos: startPos,
+      endLine: line,
+      endCol: col + 1,
+      endPos: i + 1,
+    });
+    i++; col++;
+  }
+
+  return { tokens, error: null };
+}
+
+interface ParseStackItem {
+  type: 'OBJECT' | 'ARRAY';
+  openLine: number;
+  openCol: number;
+  openPos: number;
+  state: 'KEY_OR_CLOSE' | 'COLON' | 'VALUE' | 'COMMA_OR_CLOSE';
+  lastItemEndLine?: number;
+  lastItemEndCol?: number;
+  lastItemEndPos?: number;
+  lastKeyName?: string;
+  hasCommaTrailing?: boolean;
+}
+
+/**
+ * Accurately analyzes JSON syntax errors at the AST/token level,
+ * pinpointing the EXACT culprit line (e.g. where comma was missed)
+ * instead of the shifted line reported by native JSON.parse().
+ */
 export function parseJsonError(errorMsg: string, jsonText: string): JsonErrorInfo {
-  if (!errorMsg) {
-    return { message: "", thaiHint: "", line: null, column: null, position: null };
+  if (!jsonText || !jsonText.trim()) {
+    return {
+      message: 'Empty JSON text',
+      thaiHint: 'กรุณากรอกข้อมูล JSON',
+      line: 1,
+      column: 1,
+      position: 0,
+    };
   }
 
-  let line: number | null = null;
-  let col: number | null = null;
-  let pos: number | null = null;
-
-  // 1. Line & Column match (e.g. line 7 column 5)
-  const lineColMatch = errorMsg.match(/line\s*(\d+)[,\s]+col(?:umn)?\s*(\d+)/i);
-  if (lineColMatch) {
-    line = parseInt(lineColMatch[1], 10);
-    col = parseInt(lineColMatch[2], 10);
+  // 1. Run Tokenizer
+  const { tokens, error: tokenError } = tokenize(jsonText);
+  if (tokenError) {
+    return tokenError;
   }
 
-  // 2. Position match (e.g. position 135)
-  const posMatch = errorMsg.match(/position\s*(\d+)/i);
-  if (posMatch) {
-    pos = parseInt(posMatch[1], 10);
+  const nonCommentTokens = tokens.filter((t) => t.type !== 'COMMENT');
+  if (nonCommentTokens.length === 0) {
+    return {
+      message: 'Empty JSON content',
+      thaiHint: 'กรุณากรอกข้อมูล JSON',
+      line: 1,
+      column: 1,
+      position: 0,
+    };
   }
 
-  // 3. Coordinate match (e.g. 7:5)
-  if (line === null) {
-    const coordMatch = errorMsg.match(/(\d+):(\d+)/);
-    if (coordMatch) {
-      line = parseInt(coordMatch[1], 10);
-      col = parseInt(coordMatch[2], 10);
+  const stack: ParseStackItem[] = [];
+  let rootParsed = false;
+
+  for (let idx = 0; idx < nonCommentTokens.length; idx++) {
+    const token = nonCommentTokens[idx];
+
+    if (stack.length === 0) {
+      if (rootParsed) {
+        return {
+          line: token.line,
+          column: token.col,
+          position: token.pos,
+          message: `Unexpected token '${token.value}' after root JSON`,
+          thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: พบข้อมูลส่วนเกินหลังจากจบโครงสร้าง JSON`,
+        };
+      }
+
+      if (token.type === 'LBRACE') {
+        stack.push({
+          type: 'OBJECT',
+          openLine: token.line,
+          openCol: token.col,
+          openPos: token.pos,
+          state: 'KEY_OR_CLOSE',
+        });
+        continue;
+      } else if (token.type === 'LBRACKET') {
+        stack.push({
+          type: 'ARRAY',
+          openLine: token.line,
+          openCol: token.col,
+          openPos: token.pos,
+          state: 'VALUE',
+        });
+        continue;
+      } else if (
+        token.type === 'STRING' ||
+        token.type === 'NUMBER' ||
+        token.type === 'BOOLEAN' ||
+        token.type === 'NULL'
+      ) {
+        rootParsed = true;
+        continue;
+      } else {
+        return {
+          line: token.line,
+          column: token.col,
+          position: token.pos,
+          message: `Invalid root token '${token.value}'`,
+          thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: โครงสร้าง JSON ต้องเริ่มต้นด้วย { หรือ [ หรือค่าข้อมูลที่ถูกต้อง`,
+        };
+      }
+    }
+
+    const ctx = stack[stack.length - 1];
+
+    if (ctx.type === 'OBJECT') {
+      if (ctx.state === 'KEY_OR_CLOSE') {
+        if (token.type === 'RBRACE') {
+          if (ctx.hasCommaTrailing) {
+            return {
+              line: ctx.lastItemEndLine || token.line,
+              column: ctx.lastItemEndCol || token.col,
+              position: ctx.lastItemEndPos || token.pos,
+              message: 'Trailing comma before object close',
+              thaiHint: `บรรทัดที่ ${ctx.lastItemEndLine || token.line}: มีเครื่องหมายจุลภาค (,) เกินที่ตัวสุดท้ายก่อนปิดวงเล็บ }`,
+            };
+          }
+          stack.pop();
+          if (stack.length === 0) rootParsed = true;
+          else {
+            const parent = stack[stack.length - 1];
+            parent.state = 'COMMA_OR_CLOSE';
+            parent.lastItemEndLine = token.endLine;
+            parent.lastItemEndCol = token.endCol;
+            parent.lastItemEndPos = token.endPos;
+          }
+          continue;
+        }
+
+        if (token.type === 'STRING') {
+          ctx.state = 'COLON';
+          ctx.lastKeyName = token.value;
+          ctx.hasCommaTrailing = false;
+          continue;
+        }
+
+        if (token.type === 'SINGLE_STRING') {
+          return {
+            line: token.line,
+            column: token.col,
+            position: token.pos,
+            message: `Single quoted key '${token.value}'`,
+            thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ชื่อ Key ต้องครอบด้วย Double Quote (") เท่านั้น ห้ามใช้ Single Quote (')`,
+          };
+        }
+
+        if (token.type === 'UNQUOTED_WORD') {
+          return {
+            line: token.line,
+            column: token.col,
+            position: token.pos,
+            message: `Unquoted key '${token.value}'`,
+            thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ชื่อ Key '${token.value}' ต้องครอบด้วยเครื่องหมายคำพูดคู่ (")`,
+          };
+        }
+
+        return {
+          line: token.line,
+          column: token.col,
+          position: token.pos,
+          message: `Expected key but found '${token.value}'`,
+          thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: คาดหวังชื่อ Key ใน Object แต่พบ '${token.value}'`,
+        };
+      }
+
+      if (ctx.state === 'COLON') {
+        if (token.type === 'COLON') {
+          ctx.state = 'VALUE';
+          continue;
+        }
+        return {
+          line: token.line,
+          column: token.col,
+          position: token.pos,
+          message: `Expected ':' after key '${ctx.lastKeyName}'`,
+          thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ขาดเครื่องหมายโคลอน (:) หลัง Key "${ctx.lastKeyName}"`,
+        };
+      }
+
+      if (ctx.state === 'VALUE') {
+        if (
+          token.type === 'STRING' ||
+          token.type === 'NUMBER' ||
+          token.type === 'BOOLEAN' ||
+          token.type === 'NULL'
+        ) {
+          ctx.state = 'COMMA_OR_CLOSE';
+          ctx.lastItemEndLine = token.endLine;
+          ctx.lastItemEndCol = token.endCol;
+          ctx.lastItemEndPos = token.endPos;
+          continue;
+        }
+
+        if (token.type === 'SINGLE_STRING') {
+          return {
+            line: token.line,
+            column: token.col,
+            position: token.pos,
+            message: `Single quoted value for key '${ctx.lastKeyName}'`,
+            thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ค่าของ "${ctx.lastKeyName}" ต้องครอบด้วย Double Quote (") ห้ามใช้ Single Quote (')`,
+          };
+        }
+
+        if (token.type === 'LBRACE') {
+          stack.push({
+            type: 'OBJECT',
+            openLine: token.line,
+            openCol: token.col,
+            openPos: token.pos,
+            state: 'KEY_OR_CLOSE',
+          });
+          continue;
+        }
+
+        if (token.type === 'LBRACKET') {
+          stack.push({
+            type: 'ARRAY',
+            openLine: token.line,
+            openCol: token.col,
+            openPos: token.pos,
+            state: 'VALUE',
+          });
+          continue;
+        }
+
+        return {
+          line: token.line,
+          column: token.col,
+          position: token.pos,
+          message: `Invalid value '${token.value}' for key '${ctx.lastKeyName}'`,
+          thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ค่าของ Key "${ctx.lastKeyName}" ไม่ถูกต้อง (พบ '${token.value}')`,
+        };
+      }
+
+      if (ctx.state === 'COMMA_OR_CLOSE') {
+        if (token.type === 'COMMA') {
+          ctx.state = 'KEY_OR_CLOSE';
+          ctx.hasCommaTrailing = true;
+          ctx.lastItemEndLine = token.endLine;
+          ctx.lastItemEndCol = token.endCol;
+          ctx.lastItemEndPos = token.endPos;
+          continue;
+        }
+
+        if (token.type === 'RBRACE') {
+          stack.pop();
+          if (stack.length === 0) rootParsed = true;
+          else {
+            const parent = stack[stack.length - 1];
+            parent.state = 'COMMA_OR_CLOSE';
+            parent.lastItemEndLine = token.endLine;
+            parent.lastItemEndCol = token.endCol;
+            parent.lastItemEndPos = token.endPos;
+          }
+          continue;
+        }
+
+        // MISSING COMMA CASE in Object:
+        // We are at the start of the next property, meaning the PREVIOUS line is missing the comma!
+        const culpritLine = ctx.lastItemEndLine || token.line;
+        const culpritCol = ctx.lastItemEndCol || token.col;
+        const culpritPos = ctx.lastItemEndPos || token.pos;
+
+        return {
+          line: culpritLine,
+          column: culpritCol,
+          position: culpritPos,
+          message: `Missing comma after field before '${token.value}'`,
+          thaiHint: `บรรทัดที่ ${culpritLine}: ขาดเครื่องหมายจุลภาค (,) ท้ายฟิลด์ (ก่อนขึ้น '${token.value}' ที่บรรทัด ${token.line})`,
+        };
+      }
+    } else if (ctx.type === 'ARRAY') {
+      if (ctx.state === 'VALUE') {
+        if (token.type === 'RBRACKET') {
+          if (ctx.hasCommaTrailing) {
+            return {
+              line: ctx.lastItemEndLine || token.line,
+              column: ctx.lastItemEndCol || token.col,
+              position: ctx.lastItemEndPos || token.pos,
+              message: 'Trailing comma before array close',
+              thaiHint: `บรรทัดที่ ${ctx.lastItemEndLine || token.line}: มีเครื่องหมายจุลภาค (,) เกินที่ตัวสุดท้ายก่อนปิดก้ามปู ]`,
+            };
+          }
+          stack.pop();
+          if (stack.length === 0) rootParsed = true;
+          else {
+            const parent = stack[stack.length - 1];
+            parent.state = 'COMMA_OR_CLOSE';
+            parent.lastItemEndLine = token.endLine;
+            parent.lastItemEndCol = token.endCol;
+            parent.lastItemEndPos = token.endPos;
+          }
+          continue;
+        }
+
+        if (
+          token.type === 'STRING' ||
+          token.type === 'NUMBER' ||
+          token.type === 'BOOLEAN' ||
+          token.type === 'NULL'
+        ) {
+          ctx.state = 'COMMA_OR_CLOSE';
+          ctx.hasCommaTrailing = false;
+          ctx.lastItemEndLine = token.endLine;
+          ctx.lastItemEndCol = token.endCol;
+          ctx.lastItemEndPos = token.endPos;
+          continue;
+        }
+
+        if (token.type === 'SINGLE_STRING') {
+          return {
+            line: token.line,
+            column: token.col,
+            position: token.pos,
+            message: `Single quoted item in array`,
+            thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ข้อมูลใน Array ต้องครอบด้วย Double Quote (") ห้ามใช้ Single Quote (')`,
+          };
+        }
+
+        if (token.type === 'LBRACE') {
+          ctx.hasCommaTrailing = false;
+          stack.push({
+            type: 'OBJECT',
+            openLine: token.line,
+            openCol: token.col,
+            openPos: token.pos,
+            state: 'KEY_OR_CLOSE',
+          });
+          continue;
+        }
+
+        if (token.type === 'LBRACKET') {
+          ctx.hasCommaTrailing = false;
+          stack.push({
+            type: 'ARRAY',
+            openLine: token.line,
+            openCol: token.col,
+            openPos: token.pos,
+            state: 'VALUE',
+          });
+          continue;
+        }
+
+        return {
+          line: token.line,
+          column: token.col,
+          position: token.pos,
+          message: `Invalid array element '${token.value}'`,
+          thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: ข้อมูลใน Array ไม่ถูกต้อง (พบ '${token.value}')`,
+        };
+      }
+
+      if (ctx.state === 'COMMA_OR_CLOSE') {
+        if (token.type === 'COMMA') {
+          ctx.state = 'VALUE';
+          ctx.hasCommaTrailing = true;
+          ctx.lastItemEndLine = token.endLine;
+          ctx.lastItemEndCol = token.endCol;
+          ctx.lastItemEndPos = token.endPos;
+          continue;
+        }
+
+        if (token.type === 'RBRACKET') {
+          stack.pop();
+          if (stack.length === 0) rootParsed = true;
+          else {
+            const parent = stack[stack.length - 1];
+            parent.state = 'COMMA_OR_CLOSE';
+            parent.lastItemEndLine = token.endLine;
+            parent.lastItemEndCol = token.endCol;
+            parent.lastItemEndPos = token.endPos;
+          }
+          continue;
+        }
+
+        // MISSING COMMA IN ARRAY
+        const culpritLine = ctx.lastItemEndLine || token.line;
+        const culpritCol = ctx.lastItemEndCol || token.col;
+        const culpritPos = ctx.lastItemEndPos || token.pos;
+
+        return {
+          line: culpritLine,
+          column: culpritCol,
+          position: culpritPos,
+          message: `Missing comma between array items before '${token.value}'`,
+          thaiHint: `บรรทัดที่ ${culpritLine}: ขาดเครื่องหมายจุลภาค (,) คั่นระหว่างสมาชิกใน Array (ก่อนขึ้นบรรทัดที่ ${token.line})`,
+        };
+      }
     }
   }
 
-  // 4. Line only match (e.g. line 7)
-  if (line === null) {
-    const lineOnlyMatch = errorMsg.match(/line\s*(\d+)/i);
-    if (lineOnlyMatch) {
-      line = parseInt(lineOnlyMatch[1], 10);
-    }
+  // End of Stream (EOF) with unclosed brackets
+  if (stack.length > 0) {
+    const unclosed = stack[stack.length - 1];
+    return {
+      line: unclosed.openLine,
+      column: unclosed.openCol,
+      position: unclosed.openPos,
+      message: `Unclosed ${unclosed.type === 'OBJECT' ? '{' : '['} opened at line ${unclosed.openLine}`,
+      thaiHint: `บรรทัดที่ ${unclosed.openLine} คอลัมน์ ${unclosed.openCol}: ${
+        unclosed.type === 'OBJECT' ? 'ปีกกา {' : 'ก้ามปู ['
+      } ที่เปิดไว้ ยังไม่ได้ถูกปิด`,
+    };
   }
 
-  // If position is found, derive line and col
-  if (pos !== null && pos >= 0 && jsonText) {
-    const textBefore = jsonText.slice(0, pos);
-    const lines = textBefore.split("\n");
-    const calculatedLine = lines.length;
-    const calculatedCol = lines[lines.length - 1].length + 1;
-
-    if (line === null) line = calculatedLine;
-    if (col === null) col = calculatedCol;
-  }
-
-  // If line & col are known but position is not, compute position
-  if (pos === null && line !== null && jsonText) {
-    const lines = jsonText.split("\n");
-    let offset = 0;
-    for (let i = 0; i < line - 1 && i < lines.length; i++) {
-      offset += lines[i].length + 1;
-    }
-    offset += (col ? col - 1 : 0);
-    pos = Math.min(offset, jsonText.length);
-  }
-
-  // Thai hint
-  let thaiHint = "โปรดตรวจสอบความถูกต้องของไวยากรณ์ JSON";
-  const lower = errorMsg.toLowerCase();
-
-  if (lower.includes("expected ','") || lower.includes("expected colon") || lower.includes("after property value")) {
-    thaiHint = "อาจลืมใส่เครื่องหมายจุลภาค (,) คั่นระหว่างฟิลด์ หรือลืมใส่เครื่องหมายโคลอน (:)";
-  } else if (lower.includes("unexpected token }") || lower.includes("unexpected token ]")) {
-    thaiHint = "อาจมีเครื่องหมายจุลภาค (,) เกินที่ตัวสุดท้ายก่อนปิดวงเล็บ (Trailing Comma) หรือวงเล็บปิดไม่ตรงคู่";
-  } else if (lower.includes("unexpected token '") || lower.includes("single quote")) {
-    thaiHint = "JSON รองรับเฉพาะเครื่องหมายคำพูดคู่ (\") เท่านั้น ห้ามใช้ Single quote";
-  } else if (lower.includes("expected double-quoted") || lower.includes("unquoted")) {
-    thaiHint = "ชื่อ Property (Key) ต้องครอบด้วยเครื่องหมายคำพูดคู่ (\") เสมอ";
-  } else if (lower.includes("unexpected end of json") || lower.includes("unexpected end of data")) {
-    thaiHint = "ข้อมูล JSON ยังไม่สมบูรณ์ หรือลืมปิดวงเล็บปีกกา/ก้ามปู (}, ])";
-  } else if (lower.includes("unexpected token <")) {
-    thaiHint = "ข้อความนี้ดูเหมือน HTML/XML ไม่ใช่ JSON ที่ถูกต้อง";
-  } else if (line !== null) {
-    thaiHint = "พบข้อผิดพลาดที่บรรทัด " + line + (col ? " คอลัมน์ " + col : "");
-  }
-
+  // Fallback if scanner succeeded but native JSON.parse threw
   return {
+    line: 1,
+    column: 1,
+    position: 0,
     message: errorMsg,
-    thaiHint,
-    line,
-    column: col,
-    position: pos,
+    thaiHint: 'โปรดตรวจสอบความถูกต้องของไวยากรณ์ JSON',
   };
 }
 
@@ -106,7 +732,7 @@ export function parseJsonError(errorMsg: string, jsonText: string): JsonErrorInf
  * Inserts missing commas between adjacent properties or array elements.
  */
 function insertMissingCommas(text: string): { result: string; changed: boolean } {
-  const lines = text.split("\n");
+  const lines = text.split('\n');
   const resultLines: string[] = [];
   let changed = false;
 
@@ -114,11 +740,10 @@ function insertMissingCommas(text: string): { result: string; changed: boolean }
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Find next non-empty, non-comment line
-    let nextTrimmed = "";
+    let nextTrimmed = '';
     for (let j = i + 1; j < lines.length; j++) {
       const candidate = lines[j].trim();
-      if (candidate && !candidate.startsWith("//") && !candidate.startsWith("/*")) {
+      if (candidate && !candidate.startsWith('//') && !candidate.startsWith('/*')) {
         nextTrimmed = candidate;
         break;
       }
@@ -127,20 +752,18 @@ function insertMissingCommas(text: string): { result: string; changed: boolean }
     let processedLine = line;
 
     if (trimmed && nextTrimmed) {
-      // Check if current line ends with a value and lacks a comma
       const isEndingValue =
         trimmed.endsWith('"') ||
-        trimmed.endsWith("}") ||
-        trimmed.endsWith("]") ||
+        trimmed.endsWith('}') ||
+        trimmed.endsWith(']') ||
         /\b(true|false|null|\d+(\.\d+)?)\s*$/.test(trimmed);
 
       const lacksComma =
-        !trimmed.endsWith(",") &&
-        !trimmed.endsWith("{") &&
-        !trimmed.endsWith("[") &&
-        !trimmed.endsWith(":");
+        !trimmed.endsWith(',') &&
+        !trimmed.endsWith('{') &&
+        !trimmed.endsWith('[') &&
+        !trimmed.endsWith(':');
 
-      // Next line starts with a new property or array item
       const nextStartsNewPropertyOrItem =
         /^"([^"\\]|\\.)*"\s*:/.test(nextTrimmed) ||
         /^[a-zA-Z_$][a-zA-Z0-9_$]*\s*:/.test(nextTrimmed) ||
@@ -148,11 +771,10 @@ function insertMissingCommas(text: string): { result: string; changed: boolean }
         /^"([^"\\]|\\.)*"/.test(nextTrimmed) ||
         /^(true|false|null|\d+)/.test(nextTrimmed);
 
-      // Avoid adding comma if next line is closing symbol } or ]
       const nextIsClosing = /^[}\]]/.test(nextTrimmed);
 
       if (isEndingValue && lacksComma && nextStartsNewPropertyOrItem && !nextIsClosing) {
-        processedLine = line + ",";
+        processedLine = line + ',';
         changed = true;
       }
     }
@@ -160,7 +782,7 @@ function insertMissingCommas(text: string): { result: string; changed: boolean }
     resultLines.push(processedLine);
   }
 
-  return { result: resultLines.join("\n"), changed };
+  return { result: resultLines.join('\n'), changed };
 }
 
 /**
@@ -176,7 +798,7 @@ function completeMissingBrackets(text: string): { result: string; changed: boole
     if (inString) {
       if (isEscaped) {
         isEscaped = false;
-      } else if (ch === "\\") {
+      } else if (ch === '\\') {
         isEscaped = true;
       } else if (ch === '"') {
         inString = false;
@@ -184,16 +806,16 @@ function completeMissingBrackets(text: string): { result: string; changed: boole
     } else {
       if (ch === '"') {
         inString = true;
-      } else if (ch === "{") {
-        stack.push("}");
-      } else if (ch === "[") {
-        stack.push("]");
-      } else if (ch === "}") {
-        if (stack.length > 0 && stack[stack.length - 1] === "}") {
+      } else if (ch === '{') {
+        stack.push('}');
+      } else if (ch === '[') {
+        stack.push(']');
+      } else if (ch === '}') {
+        if (stack.length > 0 && stack[stack.length - 1] === '}') {
           stack.pop();
         }
-      } else if (ch === "]") {
-        if (stack.length > 0 && stack[stack.length - 1] === "]") {
+      } else if (ch === ']') {
+        if (stack.length > 0 && stack[stack.length - 1] === ']') {
           stack.pop();
         }
       }
@@ -209,12 +831,12 @@ function completeMissingBrackets(text: string): { result: string; changed: boole
     result += '"';
   }
 
-  // Remove any trailing comma before closing brackets
-  result = result.trimEnd().replace(/,\s*$/, "");
+  // Remove trailing comma before closing brackets
+  result = result.trimEnd().replace(/,\s*$/, '');
 
   while (stack.length > 0) {
     const closing = stack.pop()!;
-    result += "\n" + closing;
+    result += '\n' + closing;
   }
 
   return { result, changed: true };
@@ -237,12 +859,11 @@ export function attemptFixJson(raw: string): AutoFixResult {
     return { fixed: null, success: false, fixesApplied: [] };
   }
 
-  // If already valid, format nicely
   try {
     const parsed = JSON.parse(raw);
     return { fixed: JSON.stringify(parsed, null, 2), success: true, fixesApplied: [] };
   } catch {
-    // Proceed to deterministic repair pipeline
+    // Proceed to repair
   }
 
   const fixesApplied: string[] = [];
@@ -250,8 +871,8 @@ export function attemptFixJson(raw: string): AutoFixResult {
 
   // Step 1: Remove comments
   if (/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/m.test(text)) {
-    text = text.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, "$1");
-    fixesApplied.push("ลบคอมเมนต์ (Removed JS comments)");
+    text = text.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1');
+    fixesApplied.push('ลบคอมเมนต์ (Removed JS comments)');
   }
 
   // Step 2: Replace single-quoted strings & keys
@@ -261,36 +882,35 @@ export function attemptFixJson(raw: string): AutoFixResult {
       const escaped = unescaped.replace(/"/g, '\\"');
       return '"' + escaped + '"';
     });
-    fixesApplied.push("เปลี่ยน Single Quote เป็น Double Quote");
+    fixesApplied.push('เปลี่ยน Single Quote เป็น Double Quote');
   }
 
   // Step 3: Fix unquoted property keys
   if (/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/.test(text)) {
     text = text.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
-    fixesApplied.push("ใส่เครื่องหมายคำพูดที่ Key");
+    fixesApplied.push('ใส่เครื่องหมายคำพูดที่ Key');
   }
 
   // Step 4: Insert missing commas between lines/properties/elements
   const commaFix = insertMissingCommas(text);
   if (commaFix.changed) {
     text = commaFix.result;
-    fixesApplied.push("เติมลูกน้ำที่ขาด (Added missing commas)");
+    fixesApplied.push('เติมลูกน้ำที่ขาด (Added missing commas)');
   }
 
   // Step 5: Remove trailing commas before closing braces/brackets
   if (/,\s*([}\]])/.test(text)) {
-    text = text.replace(/,\s*([}\]])/g, "$1");
-    fixesApplied.push("ลบลูกน้ำส่วนเกิน (Removed trailing commas)");
+    text = text.replace(/,\s*([}\]])/g, '$1');
+    fixesApplied.push('ลบลูกน้ำส่วนเกิน (Removed trailing commas)');
   }
 
   // Step 6: Complete missing closing braces/brackets at the end
   const bracketFix = completeMissingBrackets(text);
   if (bracketFix.changed) {
     text = bracketFix.result;
-    fixesApplied.push("ปิดวงเล็บปีกกา/ก้ามปูให้ครบ (Closed missing braces/brackets)");
+    fixesApplied.push('ปิดวงเล็บปีกกา/ก้ามปูให้ครบ (Closed missing braces/brackets)');
   }
 
-  // Strict verification check: Must be 100% valid JSON
   try {
     const parsed = JSON.parse(text);
     return {
@@ -299,7 +919,6 @@ export function attemptFixJson(raw: string): AutoFixResult {
       fixesApplied,
     };
   } catch {
-    // If still failing, do NOT guess or corrupt user code
     return {
       fixed: null,
       success: false,

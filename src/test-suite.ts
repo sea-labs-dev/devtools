@@ -271,10 +271,10 @@ Discount Engine
     }
 
     const parsedErr = parseJsonError(sampleError, brokenJsonMissingComma);
-    if (parsedErr.line !== 5 && parsedErr.line !== 4) {
-      throw new Error(`Expected error line 4 or 5, but got line ${parsedErr.line}`);
+    if (parsedErr.line !== 4) {
+      throw new Error(`Expected exact culprit line 4 (missing comma), but got line ${parsedErr.line}`);
     }
-    console.log(`  ✓ Identified syntax error at Line ${parsedErr.line}, Col ${parsedErr.column}`);
+    console.log(`  ✓ Accurately pinpointed exact culprit Line ${parsedErr.line}, Col ${parsedErr.column}`);
     console.log(`  ✓ Friendly hint: "${parsedErr.thaiHint}"`);
 
     // Test Auto-Fix on missing commas
