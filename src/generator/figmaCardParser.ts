@@ -56,16 +56,17 @@ export function isEffortLine(rawLine: string): { isEffort: boolean; value: numbe
  */
 export function detectActivity(title: string): { activity: string; type: string } {
   const lower = title.toLowerCase().trim();
-  if (lower.startsWith('ui') || lower.startsWith('design') || lower.startsWith('fe') || lower.startsWith('frontend')) {
+  const cleanTitle = lower.replace(/^(?:api|mobile|web|be|fe)\s*:\s*/i, '');
+  if (cleanTitle.startsWith('ui') || cleanTitle.startsWith('design') || cleanTitle.startsWith('fe') || cleanTitle.startsWith('frontend')) {
     return { activity: 'Design / UI', type: 'UI' };
   }
-  if (lower.startsWith('function') || lower.startsWith('logic') || lower.startsWith('feature')) {
+  if (cleanTitle.startsWith('function') || cleanTitle.startsWith('logic') || cleanTitle.startsWith('feature')) {
     return { activity: 'Development', type: 'Function' };
   }
-  if (lower.startsWith('api') || lower.startsWith('be') || lower.startsWith('backend') || lower.startsWith('service')) {
+  if (cleanTitle.startsWith('api') || cleanTitle.startsWith('be') || cleanTitle.startsWith('backend') || cleanTitle.startsWith('service')) {
     return { activity: 'Development', type: 'API' };
   }
-  if (lower.startsWith('test') || lower.startsWith('qa') || lower.startsWith('bug') || lower.startsWith('fix')) {
+  if (cleanTitle.startsWith('test') || cleanTitle.startsWith('qa') || cleanTitle.startsWith('bug') || cleanTitle.startsWith('fix')) {
     return { activity: 'Testing', type: 'Testing' };
   }
   return { activity: 'Development', type: 'Task' };
@@ -78,8 +79,9 @@ export function parseFigmaCards(rawText: string, options: FigmaParserOptions = {
   if (!rawText || !rawText.trim()) return [];
 
   const defaultEffort = options.defaultEffort ?? 1;
-  const prefix = options.prefix ? options.prefix.trim() + ' ' : '';
-  const suffix = options.suffix ? ' ' + options.suffix.trim() : '';
+  const rawPrefix = options.prefix ? options.prefix.trim() : '';
+  const prefix = rawPrefix ? `${rawPrefix} ` : '';
+  const suffix = options.suffix ? ` ${options.suffix.trim()}` : '';
 
   // Standardize newlines and remove invisible chars
   const sanitized = rawText
@@ -95,6 +97,14 @@ export function parseFigmaCards(rawText: string, options: FigmaParserOptions = {
   let pendingTopEffort: number | null = null;
   let cardIdCounter = 1;
 
+  const formatFinalTitle = (titleText: string): string => {
+    const trimmed = titleText.replace(/\s+/g, ' ').trim();
+    if (rawPrefix && trimmed.toLowerCase().startsWith(rawPrefix.toLowerCase())) {
+      return `${trimmed}${suffix}`.trim();
+    }
+    return `${prefix}${trimmed}${suffix}`.trim();
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim().replace(/\s+/g, ' ');
@@ -109,7 +119,7 @@ export function parseFigmaCards(rawText: string, options: FigmaParserOptions = {
       if (currentTitleLines.length > 0) {
         // Effort is at the end of the card (Bottom effort pattern)
         const combinedTitle = currentTitleLines.join(' ').replace(/\s+/g, ' ').trim();
-        const finalTitle = `${prefix}${combinedTitle}${suffix}`.trim();
+        const finalTitle = formatFinalTitle(combinedTitle);
         const meta = detectActivity(combinedTitle);
 
         cards.push({
@@ -132,7 +142,7 @@ export function parseFigmaCards(rawText: string, options: FigmaParserOptions = {
       if (pendingTopEffort !== null && currentTitleLines.length > 0 && trimmed.match(/^(UI|Function|API|Task|Feature|Bug|Story|FE|BE)\b/i)) {
         // A new card header started after a top-effort card
         const combinedTitle = currentTitleLines.join(' ').replace(/\s+/g, ' ').trim();
-        const finalTitle = `${prefix}${combinedTitle}${suffix}`.trim();
+        const finalTitle = formatFinalTitle(combinedTitle);
         const meta = detectActivity(combinedTitle);
 
         cards.push({
@@ -155,7 +165,7 @@ export function parseFigmaCards(rawText: string, options: FigmaParserOptions = {
   // Handle any remaining title lines
   if (currentTitleLines.length > 0) {
     const combinedTitle = currentTitleLines.join(' ').replace(/\s+/g, ' ').trim();
-    const finalTitle = `${prefix}${combinedTitle}${suffix}`.trim();
+    const finalTitle = formatFinalTitle(combinedTitle);
     const meta = detectActivity(combinedTitle);
 
     cards.push({

@@ -16,6 +16,8 @@ import {
   Smartphone,
   BarChart3,
   ChevronDown,
+  Tag,
+  Database,
 } from 'lucide-react';
 import {
   parseFigmaCards,
@@ -35,10 +37,41 @@ interface SamplePresetItem {
   icon: React.FC<{ className?: string }>;
   accentColor: string;
   iconBg: string;
+  prefix?: string;
   text: string;
 }
 
 const SAMPLE_PRESETS: SamplePresetItem[] = [
+  {
+    id: 'api_breederfarm',
+    name: 'BreederFarm Feeding (API Tasks)',
+    subtitle: 'Header Overview, Feeding Logic with "API :" Prefix',
+    badge: '2 Tasks • 2.5 pts',
+    category: 'API & Backend',
+    icon: Database,
+    accentColor: 'text-indigo-600 dark:text-indigo-400',
+    iconBg: 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400',
+    prefix: 'API :',
+    text: `UI
+BreederFarm\u00A0
+Feeding
+Header Overview
+
+
+
+
+
+2
+Function
+BreederFarm\u00A0
+Feeding
+
+
+
+
+
+0.5`,
+  },
   {
     id: 'ecommerce_sprint',
     name: 'E-Commerce & Checkout Flow',
@@ -48,6 +81,7 @@ const SAMPLE_PRESETS: SamplePresetItem[] = [
     icon: ShoppingCart,
     accentColor: 'text-emerald-600 dark:text-emerald-400',
     iconBg: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400',
+    prefix: '',
     text: `UI
 Checkout Screen
 Payment Gateway Selector
@@ -78,6 +112,7 @@ VAT & Shipping Fee
     icon: Smartphone,
     accentColor: 'text-cyan-600 dark:text-cyan-400',
     iconBg: 'bg-cyan-50 dark:bg-cyan-500/10 border-cyan-200 dark:border-cyan-500/30 text-cyan-600 dark:text-cyan-400',
+    prefix: '',
     text: `UI
 Login & Register Screen
 Biometric Prompt
@@ -106,6 +141,7 @@ Hardware Keystore
     icon: BarChart3,
     accentColor: 'text-amber-600 dark:text-amber-400',
     iconBg: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400',
+    prefix: '',
     text: `UI
 Sales Dashboard
 Revenue Chart & Summary Cards
@@ -238,6 +274,9 @@ export const FigmaToAzureTasksTool: React.FC = () => {
   const handleSelectPreset = (preset: SamplePresetItem) => {
     setSelectedPresetId(preset.id);
     setRawInput(preset.text);
+    if (preset.prefix !== undefined) {
+      setOptions((prev) => ({ ...prev, prefix: preset.prefix || '' }));
+    }
     setIsDropdownOpen(false);
   };
 
@@ -503,6 +542,52 @@ export const FigmaToAzureTasksTool: React.FC = () => {
             <div className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5">{totalEffort * 6} hrs</div>
           </div>
           <CheckCircle2 className="w-7 h-7 text-amber-500/20 dark:text-amber-400/30" />
+        </div>
+      </div>
+
+      {/* Task Tag & Prefix Quick Selector Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Tag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            คำนำหน้าชื่อ Task (Prefix):
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { label: 'None', val: '' },
+              { label: '⚡ API :', val: 'API :' },
+              { label: '📱 Mobile :', val: 'Mobile :' },
+              { label: '🌐 Web :', val: 'Web :' },
+              { label: '🛠️ BE :', val: 'BE :' },
+              { label: '🎨 FE :', val: 'FE :' },
+            ].map((item) => {
+              const isSelected = (options.prefix || '').trim() === item.val.trim();
+              return (
+                <button
+                  key={item.label}
+                  onClick={() => setOptions((prev) => ({ ...prev, prefix: item.val }))}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    isSelected
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700/60'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">กำหนดเอง (Custom):</span>
+          <input
+            type="text"
+            value={options.prefix || ''}
+            onChange={(e) => setOptions((prev) => ({ ...prev, prefix: e.target.value }))}
+            placeholder="เช่น [Sprint 1] หรือ API :"
+            className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-900 dark:text-slate-100 w-36 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
         </div>
       </div>
 

@@ -202,6 +202,41 @@ Discount Engine
     failCount++;
   }
 
+  // 6.2 Test Figma API Task Prefix (BreederFarm Feeding Sample)
+  console.log('\n[TEST] Testing Figma API Task Prefixing (API : UI BreederFarm)...');
+  const apiFigmaInput = `UI\nBreederFarm \nFeeding\nHeader Overview\n\n\n\n\n\n2\nFunction\nBreederFarm \nFeeding\n\n\n\n\n\n0.5`;
+  try {
+    const apiCards = parseFigmaCards(apiFigmaInput, { prefix: 'API :' });
+    if (apiCards.length !== 2) {
+      throw new Error(`Expected 2 API cards, got ${apiCards.length}`);
+    }
+
+    if (apiCards[0].title !== 'API : UI BreederFarm Feeding Header Overview' || apiCards[0].effort !== 2) {
+      throw new Error(`API Card 1 mismatch: "${apiCards[0].title}" (Effort: ${apiCards[0].effort})`);
+    }
+
+    if (apiCards[1].title !== 'API : Function BreederFarm Feeding' || apiCards[1].effort !== 0.5) {
+      throw new Error(`API Card 2 mismatch: "${apiCards[1].title}" (Effort: ${apiCards[1].effort})`);
+    }
+
+    const jsonResult = JSON.parse(formatCardsToJson(apiCards));
+    if (
+      jsonResult[0].title !== 'API : UI BreederFarm Feeding Header Overview' ||
+      jsonResult[0].effort !== 2 ||
+      jsonResult[1].title !== 'API : Function BreederFarm Feeding' ||
+      jsonResult[1].effort !== 0.5
+    ) {
+      throw new Error('API Task JSON output mismatch');
+    }
+
+    console.log('  ✓ Extracted "API : UI BreederFarm Feeding Header Overview" (2 pts)');
+    console.log('  ✓ Extracted "API : Function BreederFarm Feeding" (0.5 pts)');
+    passCount++;
+  } catch (err: any) {
+    console.error(`  ✗ FAILED Figma API Task Prefix Test: ${err.message}`);
+    failCount++;
+  }
+
   // 7. Test Root Array API Request Model & List<Map<String, dynamic>> ToJson
   console.log('\n[TEST] Testing Root Array API Post Save Model...');
   const apiSampleJson = JSON.stringify([
