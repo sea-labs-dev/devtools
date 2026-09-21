@@ -6,6 +6,12 @@ export interface JsonErrorInfo {
   position: number | null;
 }
 
+export interface AutoFixResult {
+  fixed: string | null;
+  success: boolean;
+  fixesApplied: string[];
+}
+
 export function parseJsonError(errorMsg: string, jsonText: string): JsonErrorInfo {
   if (!errorMsg) {
     return { message: "", thaiHint: "", line: null, column: null, position: null };
@@ -96,38 +102,208 @@ export function parseJsonError(errorMsg: string, jsonText: string): JsonErrorInf
   };
 }
 
-export function attemptFixJson(raw: string): { fixed: string | null; success: boolean } {
-  if (!raw.trim()) return { fixed: null, success: false };
+/**
+ * Inserts missing commas between adjacent properties or array elements.
+ */
+function insertMissingCommas(text: string): { result: string; changed: boolean } {
+  const lines = text.split("\n");
+  const resultLines: string[] = [];
+  let changed = false;
 
-  try {
-    const parsed = JSON.parse(raw);
-    return { fixed: JSON.stringify(parsed, null, 2), success: true };
-  } catch {
-    // try clean
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Find next non-empty, non-comment line
+    let nextTrimmed = "";
+    for (let j = i + 1; j < lines.length; j++) {
+      const candidate = lines[j].trim();
+      if (candidate && !candidate.startsWith("//") && !candidate.startsWith("/*")) {
+        nextTrimmed = candidate;
+        break;
+      }
+    }
+
+    let processedLine = line;
+
+    if (trimmed && nextTrimmed) {
+      // Check if current line ends with a value and lacks a comma
+      const isEndingValue =
+        trimmed.endsWith('"') ||
+        trimmed.endsWith("}") ||
+        trimmed.endsWith("]") ||
+        /\b(true|false|null|\d+(\.\d+)?)\s*$/.test(trimmed);
+
+      const lacksComma =
+        !trimmed.endsWith(",") &&
+        !trimmed.endsWith("{") &&
+        !trimmed.endsWith("[") &&
+        !trimmed.endsWith(":");
+
+      // Next line starts with a new property or array item
+      const nextStartsNewPropertyOrItem =
+        /^"([^"\\]|\\.)*"\s*:/.test(nextTrimmed) ||
+        /^[a-zA-Z_$][a-zA-Z0-9_$]*\s*:/.test(nextTrimmed) ||
+        /^[{[]/.test(nextTrimmed) ||
+        /^"([^"\\]|\\.)*"/.test(nextTrimmed) ||
+        /^(true|false|null|\d+)/.test(nextTrimmed);
+
+      // Avoid adding comma if next line is closing symbol } or ]
+      const nextIsClosing = /^[}\]]/.test(nextTrimmed);
+
+      if (isEndingValue && lacksComma && nextStartsNewPropertyOrItem && !nextIsClosing) {
+        processedLine = line + ",";
+        changed = true;
+      }
+    }
+
+    resultLines.push(processedLine);
   }
 
+  return { result: resultLines.join("\n"), changed };
+}
+
+/**
+ * Closes unclosed braces `{}` and brackets `[]` at the end of the JSON string.
+ */
+function completeMissingBrackets(text: string): { result: string; changed: boolean } {
+  const stack: string[] = [];
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (ch === "\\") {
+        isEscaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === "{") {
+        stack.push("}");
+      } else if (ch === "[") {
+        stack.push("]");
+      } else if (ch === "}") {
+        if (stack.length > 0 && stack[stack.length - 1] === "}") {
+          stack.pop();
+        }
+      } else if (ch === "]") {
+        if (stack.length > 0 && stack[stack.length - 1] === "]") {
+          stack.pop();
+        }
+      }
+    }
+  }
+
+  if (stack.length === 0 && !inString) {
+    return { result: text, changed: false };
+  }
+
+  let result = text;
+  if (inString) {
+    result += '"';
+  }
+
+  // Remove any trailing comma before closing brackets
+  result = result.trimEnd().replace(/,\s*$/, "");
+
+  while (stack.length > 0) {
+    const closing = stack.pop()!;
+    result += "\n" + closing;
+  }
+
+  return { result, changed: true };
+}
+
+/**
+ * Attempts to automatically fix confident and deterministic JSON syntax errors:
+ * 1. Missing closing braces / brackets (`}` and `]`)
+ * 2. Missing commas between properties or array items
+ * 3. Trailing commas before `}` or `]`
+ * 4. Single quotes instead of double quotes
+ * 5. Unquoted object keys
+ * 6. Stripping JavaScript-style comments
+ *
+ * GUARANTEE: Only returns success: true if the resulting output strictly passes JSON.parse().
+ * If there is any ambiguity or it still fails to parse, it will return success: false without touching user code.
+ */
+export function attemptFixJson(raw: string): AutoFixResult {
+  if (!raw || !raw.trim()) {
+    return { fixed: null, success: false, fixesApplied: [] };
+  }
+
+  // If already valid, format nicely
+  try {
+    const parsed = JSON.parse(raw);
+    return { fixed: JSON.stringify(parsed, null, 2), success: true, fixesApplied: [] };
+  } catch {
+    // Proceed to deterministic repair pipeline
+  }
+
+  const fixesApplied: string[] = [];
   let text = raw;
 
-  // 1. Remove comments
-  text = text.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, "$1");
+  // Step 1: Remove comments
+  if (/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/m.test(text)) {
+    text = text.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, "$1");
+    fixesApplied.push("ลบคอมเมนต์ (Removed JS comments)");
+  }
 
-  // 2. Replace single-quoted strings and keys with double quotes
-  text = text.replace(/'((?:\\.|[^'])*)'/g, (_, content: string) => {
-    const unescaped = content.replace(/\\'/g, "'");
-    const escaped = unescaped.replace(/"/g, '\\"');
-    return '"' + escaped + '"';
-  });
+  // Step 2: Replace single-quoted strings & keys
+  if (/'((?:\\.|[^'])*)'/.test(text)) {
+    text = text.replace(/'((?:\\.|[^'])*)'/g, (_, content: string) => {
+      const unescaped = content.replace(/\\'/g, "'");
+      const escaped = unescaped.replace(/"/g, '\\"');
+      return '"' + escaped + '"';
+    });
+    fixesApplied.push("เปลี่ยน Single Quote เป็น Double Quote");
+  }
 
-  // 3. Fix unquoted keys
-  text = text.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+  // Step 3: Fix unquoted property keys
+  if (/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/.test(text)) {
+    text = text.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+    fixesApplied.push("ใส่เครื่องหมายคำพูดที่ Key");
+  }
 
-  // 4. Remove trailing commas
-  text = text.replace(/,\s*([}\]])/g, "$1");
+  // Step 4: Insert missing commas between lines/properties/elements
+  const commaFix = insertMissingCommas(text);
+  if (commaFix.changed) {
+    text = commaFix.result;
+    fixesApplied.push("เติมลูกน้ำที่ขาด (Added missing commas)");
+  }
 
+  // Step 5: Remove trailing commas before closing braces/brackets
+  if (/,\s*([}\]])/.test(text)) {
+    text = text.replace(/,\s*([}\]])/g, "$1");
+    fixesApplied.push("ลบลูกน้ำส่วนเกิน (Removed trailing commas)");
+  }
+
+  // Step 6: Complete missing closing braces/brackets at the end
+  const bracketFix = completeMissingBrackets(text);
+  if (bracketFix.changed) {
+    text = bracketFix.result;
+    fixesApplied.push("ปิดวงเล็บปีกกา/ก้ามปูให้ครบ (Closed missing braces/brackets)");
+  }
+
+  // Strict verification check: Must be 100% valid JSON
   try {
     const parsed = JSON.parse(text);
-    return { fixed: JSON.stringify(parsed, null, 2), success: true };
+    return {
+      fixed: JSON.stringify(parsed, null, 2),
+      success: true,
+      fixesApplied,
+    };
   } catch {
-    return { fixed: null, success: false };
+    // If still failing, do NOT guess or corrupt user code
+    return {
+      fixed: null,
+      success: false,
+      fixesApplied: [],
+    };
   }
 }

@@ -277,6 +277,37 @@ Discount Engine
     console.log(`  ✓ Identified syntax error at Line ${parsedErr.line}, Col ${parsedErr.column}`);
     console.log(`  ✓ Friendly hint: "${parsedErr.thaiHint}"`);
 
+    // Test Auto-Fix on missing commas
+    const missingCommaFix = attemptFixJson(brokenJsonMissingComma);
+    if (!missingCommaFix.success || !missingCommaFix.fixed) {
+      throw new Error('Auto-fix failed to repair missing comma between properties');
+    }
+    const fixedCommaObj = JSON.parse(missingCommaFix.fixed);
+    if (fixedCommaObj[0].farm !== '7415' || fixedCommaObj[0].house !== '03') {
+      throw new Error('Auto-fix missing comma produced incorrect values');
+    }
+    console.log('  ✓ Auto-fix successfully detected and inserted missing comma between lines');
+
+    // Test Auto-Fix on unclosed brackets & braces
+    const unclosedJson = `[\n  {\n    "id": 101,\n    "title": "Unclosed Task"`;
+    const unclosedFix = attemptFixJson(unclosedJson);
+    if (!unclosedFix.success || !unclosedFix.fixed) {
+      throw new Error('Auto-fix failed to close missing braces and brackets');
+    }
+    const fixedUnclosed = JSON.parse(unclosedFix.fixed);
+    if (fixedUnclosed[0].id !== 101 || fixedUnclosed[0].title !== 'Unclosed Task') {
+      throw new Error('Auto-fix unclosed bracket produced incorrect data');
+    }
+    console.log('  ✓ Auto-fix successfully closed missing braces & brackets (`}` and `]`)');
+
+    // Test Ambiguous / Unsafe Cases -> MUST NOT auto-fix
+    const ambiguousJson = `{ "user": "Somchai", : : "invalid syntax" }`;
+    const ambiguousFix = attemptFixJson(ambiguousJson);
+    if (ambiguousFix.success) {
+      throw new Error('Ambiguous JSON should NOT be auto-fixed');
+    }
+    console.log('  ✓ Ambiguous/Corrupted JSON safely skipped without modifying user code');
+
     // Test Auto-Fix on single quotes & trailing comma
     const brokenSingleQuotes = `{\n  'name': 'Somchai',\n  'age': 30,\n}`;
     const fixRes = attemptFixJson(brokenSingleQuotes);

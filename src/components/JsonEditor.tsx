@@ -323,7 +323,11 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
                 <button
                   onClick={handleApplyAutoFix}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-xs transition-colors"
-                  title="ซ่อมแซม Trailing comma, เครื่องหมายคำพูด, หรือวงเล็บอัตโนมัติ"
+                  title={
+                    autoFixResult.fixesApplied.length > 0
+                      ? `ตรวจพบสิ่งที่ซ่อมแซมได้อัตโนมัติ:\n• ${autoFixResult.fixesApplied.join('\n• ')}`
+                      : 'ซ่อมแซมไวยากรณ์ JSON อัตโนมัติ'
+                  }
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>ซ่อม JSON อัตโนมัติ</span>
