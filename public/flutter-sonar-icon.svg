@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="50%" stop-color="#0B0F19" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Border Glow Gradient -->
+    <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="50%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+
+    <!-- Lightning & Glyph Gradient -->
+    <linearGradient id="glyphGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22D3EE" />
+      <stop offset="40%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#818CF8" />
+    </linearGradient>
+
+    <!-- Emerald Indicator Gradient -->
+    <radialGradient id="emeraldGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="70%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#059669" />
+    </radialGradient>
+
+    <!-- Soft Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Squircle Base with Gradient Border -->
+  <rect
+    x="16"
+    y="16"
+    width="480"
+    height="480"
+    rx="110"
+    fill="url(#bgGradient)"
+    stroke="url(#borderGradient)"
+    stroke-width="20"
+  />
+
+  <!-- Subtle Inner Ring Highlight -->
+  <rect
+    x="32"
+    y="32"
+    width="448"
+    height="448"
+    rx="96"
+    fill="none"
+    stroke="#38BDF8"
+    stroke-width="2"
+    stroke-opacity="0.3"
+  />
+
+  <!-- Code Bracket Left < -->
+  <path
+    d="M 175 185 L 115 256 L 175 327"
+    fill="none"
+    stroke="#06B6D4"
+    stroke-width="32"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-opacity="0.85"
+  />
+
+  <!-- Code Bracket Right > -->
+  <path
+    d="M 337 185 L 397 256 L 337 327"
+    fill="none"
+    stroke="#818CF8"
+    stroke-width="32"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-opacity="0.85"
+  />
+
+  <!-- Central Dynamic Lightning Bolt Zap (Clean Code & Speed) -->
+  <path
+    d="M 276 130 L 195 265 L 255 265 L 236 382 L 320 245 L 260 245 Z"
+    fill="url(#glyphGradient)"
+    filter="url(#glow)"
+  />
+
+  <!-- Active Status Ping / Glowing Dot at Top Right -->
+  <circle cx="410" cy="102" r="28" fill="#10B981" opacity="0.3" />
+  <circle cx="410" cy="102" r="20" fill="url(#emeraldGlow)" stroke="#FFFFFF" stroke-width="4" />
+</svg>
