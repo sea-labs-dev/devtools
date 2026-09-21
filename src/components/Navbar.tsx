@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck, Zap, Home, ChevronRight, Sun, Moon } from 'lucide-react';
 import { TOOLS_REGISTRY } from '../constants/toolsRegistry';
+import { ToolDropdown } from './ToolDropdown';
 
 interface NavbarProps {
   currentToolId: string | null;
@@ -20,10 +21,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentTool = currentToolId
     ? TOOLS_REGISTRY.find((t) => t.id === currentToolId)
     : null;
-
-  const mobileTools = TOOLS_REGISTRY.filter((t) => t.platform === 'mobile');
-  const webTools = TOOLS_REGISTRY.filter((t) => t.platform === 'web');
-  const sharedTools = TOOLS_REGISTRY.filter((t) => t.platform === 'shared');
 
   return (
     <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 lg:px-8 py-3 transition-colors duration-200">
@@ -93,46 +90,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>หน้าแรก (Home)</span>
           </button>
 
-          {/* Quick Tool Switcher Dropdown (Grouped) */}
-          <div className="relative">
-            <select
-              value={currentToolId || ''}
-              onChange={(e) => {
-                if (e.target.value === '') {
-                  onNavigateHome();
-                } else {
-                  onSelectTool(e.target.value);
-                }
-              }}
-              className="bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
-            >
-              <option value="">-- เลือกเครื่องมือ (Switch Tool) --</option>
-              
-              <optgroup label="📱 Mobile (Flutter & Dart)">
-                {mobileTools.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title} ({t.titleTh})
-                  </option>
-                ))}
-              </optgroup>
-
-              <optgroup label="🌐 Web (Next.js & TypeScript)">
-                {webTools.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title} ({t.titleTh})
-                  </option>
-                ))}
-              </optgroup>
-
-              <optgroup label="🛠️ General Utilities">
-                {sharedTools.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title} ({t.titleTh})
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
+          {/* Modern Interactive Tool Switcher Dropdown */}
+          <ToolDropdown
+            currentToolId={currentToolId}
+            onSelectTool={onSelectTool}
+            onNavigateHome={onNavigateHome}
+          />
 
           {/* Theme Toggle Button (Light / Dark Mode) */}
           <button
