@@ -290,23 +290,59 @@ export const JsonFormatterTool: React.FC = () => {
       {/* Editor & Metrics */}
       <div className="bg-white dark:bg-slate-900/70 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-xl overflow-hidden flex flex-col transition-colors">
         {/* Top Status Bar */}
-        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-xs font-mono select-none">
-          <div className="flex items-center gap-3">
+        <div
+          className={`flex items-center justify-between px-4 py-3 border-b text-xs font-mono select-none transition-colors ${
+            isValid
+              ? 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+              : 'bg-rose-50/80 dark:bg-rose-950/50 border-rose-200 dark:border-rose-900/60 text-rose-900 dark:text-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
             <span
               className={`flex items-center gap-1.5 font-bold ${
                 isValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${isValid ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-              {isValid ? 'Valid JSON' : 'Invalid JSON'}
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  isValid ? 'bg-emerald-500' : 'bg-rose-500 ring-4 ring-rose-500/20 animate-pulse'
+                }`}
+              />
+              {isValid ? 'Valid JSON' : 'Invalid JSON (Syntax Error)'}
             </span>
-            <span className="text-slate-300 dark:text-slate-700">|</span>
+
+            {!isValid && errorInfo && errorInfo.line !== null && (
+              <button
+                onClick={() => jumpToLine(errorInfo.line!, errorInfo.column || 1)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 dark:hover:bg-rose-800 text-rose-800 dark:text-rose-200 border border-rose-300 dark:border-rose-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                title="คลิกเพื่อเลื่อน Cursor ไปยังตำแหน่งที่ผิด"
+              >
+                <Target className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                บรรทัดที่ {errorInfo.line}
+                {errorInfo.column !== null ? `:${errorInfo.column}` : ''}
+              </button>
+            )}
+
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
             <span className="text-slate-600 dark:text-slate-400">{lineCount} lines</span>
-            <span className="text-slate-300 dark:text-slate-700">|</span>
-            <span className="text-slate-600 dark:text-slate-400">{keyCount} total keys</span>
-            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <span className="text-slate-600 dark:text-slate-400">
+              {isValid ? `${keyCount} total keys` : 'Invalid Structure'}
+            </span>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
             <span className="text-slate-600 dark:text-slate-400">{(byteCount / 1024).toFixed(2)} KB</span>
           </div>
+
+          {!isValid && autoFixResult?.success && (
+            <button
+              onClick={handleApplyAutoFix}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg shadow-sm transition-transform active:scale-95 cursor-pointer"
+              title="ตรวจพบไวยากรณ์ที่ซ่อมแซมได้อัตโนมัติ"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>ซ่อม Auto-Fix</span>
+            </button>
+          )}
         </div>
 
         {/* Text Area with Line Gutter */}

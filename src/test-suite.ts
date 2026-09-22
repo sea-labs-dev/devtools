@@ -355,6 +355,28 @@ Discount Engine
     }
     console.log('  ✓ Auto-fix successfully repaired single quotes and trailing comma');
 
+    // Test Misplaced dot (e.g. `"version": "1.0.0".`)
+    const brokenMisplacedDot = `{\n  "project": "DevTools Hub",\n  "version": "1.0.0".\n  "author": "Nareekarn"\n}`;
+    let dotError = '';
+    try {
+      JSON.parse(brokenMisplacedDot);
+    } catch (e: any) {
+      dotError = e.message;
+    }
+    const parsedDotErr = parseJsonError(dotError, brokenMisplacedDot);
+    if (parsedDotErr.line !== 3 || parsedDotErr.column !== 21) {
+      throw new Error(`Expected line 3 col 21 for misplaced dot, got line ${parsedDotErr.line} col ${parsedDotErr.column}`);
+    }
+    const dotFix = attemptFixJson(brokenMisplacedDot);
+    if (!dotFix.success || !dotFix.fixed) {
+      throw new Error('Auto-fix failed to repair misplaced dot');
+    }
+    const fixedDotObj = JSON.parse(dotFix.fixed);
+    if (fixedDotObj.version !== '1.0.0' || fixedDotObj.author !== 'Nareekarn') {
+      throw new Error('Auto-fix misplaced dot produced invalid data');
+    }
+    console.log('  ✓ Pinpointed misplaced dot at Line 3, Col 21 and successfully repaired to comma');
+
     passCount++;
   } catch (err: any) {
     console.error(`  ✗ FAILED JSON Error Parser Test: ${err.message}`);

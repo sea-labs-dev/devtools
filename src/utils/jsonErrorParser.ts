@@ -570,6 +570,22 @@ export function parseJsonError(errorMsg: string, jsonText: string): JsonErrorInf
           continue;
         }
 
+        // If unexpected symbol or unknown character (e.g. '.', ';', '!', etc.)
+        if (
+          token.type === 'UNKNOWN' ||
+          token.value === '.' ||
+          token.value === ';' ||
+          !/^[a-zA-Z0-9_"{[\]]$/.test(token.value[0] || '')
+        ) {
+          return {
+            line: token.line,
+            column: token.col,
+            position: token.pos,
+            message: `Unexpected character '${token.value}' after property value`,
+            thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: พบตัวอักษร '${token.value}' ที่ไม่ถูกต้อง (คาดหวังเครื่องหมายจุลภาค ',' หรือปิดปีกกา '}')`,
+          };
+        }
+
         // MISSING COMMA CASE in Object:
         // We are at the start of the next property, meaning the PREVIOUS line is missing the comma!
         const culpritLine = ctx.lastItemEndLine || token.line;
@@ -686,6 +702,22 @@ export function parseJsonError(errorMsg: string, jsonText: string): JsonErrorInf
             parent.lastItemEndPos = token.endPos;
           }
           continue;
+        }
+
+        // If unexpected symbol or unknown character (e.g. '.', ';', '!', etc.)
+        if (
+          token.type === 'UNKNOWN' ||
+          token.value === '.' ||
+          token.value === ';' ||
+          !/^[a-zA-Z0-9_"{[\]]$/.test(token.value[0] || '')
+        ) {
+          return {
+            line: token.line,
+            column: token.col,
+            position: token.pos,
+            message: `Unexpected character '${token.value}' after array element`,
+            thaiHint: `บรรทัดที่ ${token.line} คอลัมน์ ${token.col}: พบตัวอักษร '${token.value}' ที่ไม่ถูกต้อง (คาดหวังเครื่องหมายจุลภาค ',' หรือปิดก้ามปู ']')`,
+          };
         }
 
         // MISSING COMMA IN ARRAY
@@ -846,10 +878,11 @@ function completeMissingBrackets(text: string): { result: string; changed: boole
  * Attempts to automatically fix confident and deterministic JSON syntax errors:
  * 1. Missing closing braces / brackets (`}` and `]`)
  * 2. Missing commas between properties or array items
- * 3. Trailing commas before `}` or `]`
- * 4. Single quotes instead of double quotes
- * 5. Unquoted object keys
- * 6. Stripping JavaScript-style comments
+ * 3. Misplaced dots / semicolons (e.g. "version": "1.0.0". or ;)
+ * 4. Trailing commas before `}` or `]`
+ * 5. Single quotes instead of double quotes
+ * 6. Unquoted object keys
+ * 7. Stripping JavaScript-style comments
  *
  * GUARANTEE: Only returns success: true if the resulting output strictly passes JSON.parse().
  * If there is any ambiguity or it still fails to parse, it will return success: false without touching user code.
@@ -889,6 +922,26 @@ export function attemptFixJson(raw: string): AutoFixResult {
   if (/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/.test(text)) {
     text = text.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
     fixesApplied.push('ใส่เครื่องหมายคำพูดที่ Key');
+  }
+
+  // Step 3.5: Fix misplaced dots or semicolons at end of properties (e.g. "version": "1.0.0". or ;)
+  if (/([0-9"}\]true|false|null])\s*[;\.]\s*$/m.test(text)) {
+    const candidateComma = text.replace(/([0-9"}\]true|false|null])\s*[;\.]\s*$/gm, '$1,');
+    try {
+      JSON.parse(candidateComma);
+      text = candidateComma;
+      fixesApplied.push('เปลี่ยนจุด/เซมิโคลอนผิดตำแหน่งเป็นลูกน้ำ (Replaced misplaced dot/semicolon with comma)');
+    } catch {
+      const candidateStrip = text.replace(/([0-9"}\]true|false|null])\s*[;\.]\s*$/gm, '$1');
+      try {
+        JSON.parse(candidateStrip);
+        text = candidateStrip;
+        fixesApplied.push('ลบจุด/เซมิโคลอนส่วนเกิน (Removed misplaced dot/semicolon)');
+      } catch {
+        // Proceed with other rules
+        text = candidateComma;
+      }
+    }
   }
 
   // Step 4: Insert missing commas between lines/properties/elements
