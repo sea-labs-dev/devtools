@@ -51,9 +51,18 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   const byteCount = new Blob([value]).size;
 
   // Sync scroll between textarea and line gutter
-  const handleScroll = () => {
-    if (textareaRef.current && gutterRef.current) {
-      gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
+
+  const handleGutterWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop += e.deltaY;
+      if (gutterRef.current) {
+        gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+      }
     }
   };
 
@@ -85,14 +94,23 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     textarea.focus();
     textarea.setSelectionRange(charOffset, charOffset);
 
-    // Scroll line into view smoothly
-    // Line height is 24px (leading-6)
     const lineHeightPx = 24;
-    const targetScroll = Math.max(0, (targetLine - 4) * lineHeightPx);
-    textarea.scrollTo({
-      top: targetScroll,
-      behavior: 'smooth',
-    });
+    const maxScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    if (maxScroll > 0) {
+      const targetScroll = Math.min(maxScroll, Math.max(0, (targetLine - 3) * lineHeightPx));
+      textarea.scrollTo({
+        top: targetScroll,
+        behavior: 'smooth',
+      });
+      if (gutterRef.current) {
+        gutterRef.current.scrollTop = targetScroll;
+      }
+    } else {
+      textarea.scrollTop = 0;
+      if (gutterRef.current) {
+        gutterRef.current.scrollTop = 0;
+      }
+    }
 
     updateCursorPosition(textarea);
   };
@@ -101,10 +119,14 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     try {
       const parsed = JSON.parse(value);
       onChange(JSON.stringify(parsed, null, 2));
+      if (textareaRef.current) textareaRef.current.scrollTop = 0;
+      if (gutterRef.current) gutterRef.current.scrollTop = 0;
     } catch {
       // If broken, try autoFix
       if (autoFixResult?.success && autoFixResult.fixed) {
         onChange(autoFixResult.fixed);
+        if (textareaRef.current) textareaRef.current.scrollTop = 0;
+        if (gutterRef.current) gutterRef.current.scrollTop = 0;
       }
     }
   };
@@ -113,6 +135,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     try {
       const parsed = JSON.parse(value);
       onChange(JSON.stringify(parsed));
+      if (textareaRef.current) textareaRef.current.scrollTop = 0;
+      if (gutterRef.current) gutterRef.current.scrollTop = 0;
     } catch {
       // Keep as is if invalid
     }
@@ -120,6 +144,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
   const handleClear = () => {
     onChange('');
+    if (textareaRef.current) textareaRef.current.scrollTop = 0;
+    if (gutterRef.current) gutterRef.current.scrollTop = 0;
   };
 
   const handleCopy = async () => {
@@ -138,6 +164,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       const text = evt.target?.result as string;
       if (text) {
         onChange(text);
+        if (textareaRef.current) textareaRef.current.scrollTop = 0;
+        if (gutterRef.current) gutterRef.current.scrollTop = 0;
       }
     };
     reader.readAsText(file);
@@ -147,15 +175,23 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   const handleApplyAutoFix = () => {
     if (autoFixResult?.success && autoFixResult.fixed) {
       onChange(autoFixResult.fixed);
+      if (textareaRef.current) textareaRef.current.scrollTop = 0;
+      if (gutterRef.current) gutterRef.current.scrollTop = 0;
     }
   };
 
-  // Re-sync gutter scroll when lines count change
+  // Re-sync gutter scroll and clamp bounds
   useEffect(() => {
-    if (textareaRef.current && gutterRef.current) {
-      gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+    if (textareaRef.current) {
+      const maxScroll = textareaRef.current.scrollHeight - textareaRef.current.clientHeight;
+      if (maxScroll <= 0 && textareaRef.current.scrollTop > 0) {
+        textareaRef.current.scrollTop = 0;
+      }
+      if (gutterRef.current) {
+        gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+      }
     }
-  }, [lines.length]);
+  }, [value, lines.length]);
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900/70 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md dark:shadow-xl overflow-hidden transition-colors">
@@ -270,38 +306,50 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       </div>
 
       {/* Editor Body with Line Numbers Gutter */}
-      <div className="relative flex-1 flex min-h-[440px] bg-slate-50/70 dark:bg-slate-950/70 overflow-hidden">
+      <div className="relative flex-1 flex h-[480px] min-h-[440px] bg-slate-50/70 dark:bg-slate-950/70 overflow-hidden font-mono">
         {/* Line Gutter */}
         <div
           ref={gutterRef}
-          className="w-11 sm:w-13 bg-slate-100/90 dark:bg-slate-900/90 py-3.5 font-mono text-xs select-none border-r border-slate-200 dark:border-slate-800 overflow-hidden shrink-0"
+          onWheel={handleGutterWheel}
+          className="w-12 sm:w-14 bg-slate-100/90 dark:bg-slate-900/90 py-3.5 font-mono text-xs select-none border-r border-slate-200 dark:border-slate-800 overflow-hidden shrink-0"
           aria-hidden="true"
         >
-          {lines.map((_, idx) => {
-            const lineNum = idx + 1;
-            const isErrorLine = errorInfo?.line === lineNum;
-            const isCursorLine = cursorPos.line === lineNum;
+          <div
+            style={{
+              minHeight: `${lines.length * 24 + 28}px`,
+              height: textareaRef.current?.scrollHeight || 'auto',
+            }}
+          >
+            {lines.map((_, idx) => {
+              const lineNum = idx + 1;
+              const isErrorLine = errorInfo?.line === lineNum;
+              const isCursorLine = cursorPos.line === lineNum;
 
-            return (
-              <div
-                key={lineNum}
-                onClick={() => jumpToLine(lineNum)}
-                className={`h-6 leading-6 px-1.5 text-right cursor-pointer flex items-center justify-end gap-1 transition-colors ${
-                  isErrorLine
-                    ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold border-l-2 border-rose-500 pl-1'
-                    : isCursorLine
-                    ? 'bg-slate-200/60 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 font-medium'
-                    : 'text-slate-400 dark:text-slate-600 hover:text-slate-700 dark:hover:text-slate-300'
-                }`}
-                title={isErrorLine ? `Error on line ${lineNum}: ${errorInfo?.message}` : `Click to go to line ${lineNum}`}
-              >
-                {isErrorLine && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                )}
-                <span className="text-[11px] sm:text-xs">{lineNum}</span>
-              </div>
-            );
-          })}
+              return (
+                <div
+                  key={lineNum}
+                  onClick={() => jumpToLine(lineNum)}
+                  className={`h-6 leading-6 px-1.5 text-right cursor-pointer flex items-center justify-end gap-1 transition-colors ${
+                    isErrorLine
+                      ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold border-l-2 border-rose-500 pl-1'
+                      : isCursorLine
+                      ? 'bg-slate-200/60 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 font-medium'
+                      : 'text-slate-400 dark:text-slate-600 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                  title={
+                    isErrorLine
+                      ? `Error on line ${lineNum}: ${errorInfo?.message}`
+                      : `Click to go to line ${lineNum}`
+                  }
+                >
+                  {isErrorLine && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                  )}
+                  <span className="text-[11px] sm:text-xs">{lineNum}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Text Area */}
@@ -318,6 +366,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
           onScroll={handleScroll}
           placeholder={`วาง JSON ของคุณที่นี่ หรือเลือก Preset ด้านบน...\n\n{\n  "user_id": 101,\n  "full_name": "Somchai Prasert",\n  "is_active": true\n}`}
           spellCheck={false}
+          style={{ lineHeight: '24px' }}
           className="flex-1 w-full h-full py-3.5 px-3 bg-transparent text-slate-900 dark:text-slate-100 font-mono text-xs sm:text-sm leading-6 resize-none focus:outline-none selection:bg-cyan-500/30 overflow-auto whitespace-pre"
         />
       </div>
